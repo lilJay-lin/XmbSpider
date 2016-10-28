@@ -47,7 +47,7 @@ class Spider:
     @staticmethod
     # 解析css
     def resolve_style(content):
-        urls = re.findall(r"url\([\'\"]?([^\'\"]*)[\'\"]?\)", content)
+        urls = re.findall(r"url\s*\(\*?[\'\"]?([^\(\'\"\)]*)[\'\"]?\*?\)", content)
         return urls
 
     @staticmethod
