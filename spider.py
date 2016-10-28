@@ -6,9 +6,10 @@ from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 
 
-# 获取a链接, TODO: 没处理base64和background
-def get_tags_href(soup):
+# 解析html, TODO: 没处理background
+def resolve_html(content):
     urls = []
+    soup = BeautifulSoup(content, "html.parser")
     pattern = re.compile("^(?!javascript|#)")
     tags_href = soup.find_all(['link', 'a'], attrs={'href': pattern})
     tags_src = soup.find_all(['img', 'script'], attrs={'src': pattern})
@@ -16,6 +17,12 @@ def get_tags_href(soup):
         urls.append(tag_a['href'])
     for tag_a in tags_src:
         urls.append(tag_a['src'])
+    return urls
+
+
+# 解析css
+def resolve_style(content):
+    urls = re.findall(r"url\([\'\"]?([^\'\"]*)[\'\"]?\)", content)
     return urls
 
 
@@ -37,30 +44,66 @@ def get_urls(url, save, max_repeat_time=5):
             break
         except:
             print("Open Url Failed !!! Repeat")
-            '''time.sleep(1)'''
+            time.sleep(1)
             repeat_time += 1
             if repeat_time == max_repeat_time:
                 return urls
     status = f.status_code
     if status == 200:
+        # 解析页面内容的下级链接
+        urls.extend(fixed_url(url, spider_content(url, f)))
+        # 保存内容
         if save:
             save_file(url, f)
-        if is_html(url) is True:
-            print("Reading the web ...")
-            soup = BeautifulSoup(f.content, "html.parser")
-            a_url = get_tags_href(soup)
-            urls.extend(fixed_url(url, a_url))
+    return urls
+
+
+# 解析内容
+def spider_content(url, f):
+    urls = []
+    if is_html(url) is True:
+        print("Reading the web ...")
+        urls.extend(resolve_html(f.content))
+    if is_css(url) is True:
+        print("Reading the stylesheet ...")
+        urls.extend(resolve_style(f.text))
+
     return urls
 
 
 # 保存数据
 def save_file(url, res):
-    p_url_arr = url.split('/')
-    name = 'e:/spider/' + p_url_arr.pop()
+    delimiter = '/'
+    parse_obj = urlparse(url)
+    path = parse_obj.path
+    p_url_arr = path.split('/')
+    file_name = p_url_arr.pop()
+    path = delimiter + delimiter.join(p_url_arr) + delimiter
+    base = 'e:/spider'
+    check_dictionary(base, path)
+    '''
+    content_type = res.headers['Content-Type']
+    if content_type.find('javascript') != -1:
+        base += 'js/'
+    elif content_type.find('image') != -1:
+        base += 'images/'
+    elif content_type.find('css') != -1:
+        base += 'css/'
+    '''
+    search = file_name.find('?')
+    if search != -1:
+        file_name = file_name[0:search]
+    file_name = re.sub(r'[\\\/:\*\?\"\'<>\|]', '_', file_name)
+    name = base + path + file_name
     with open(name, 'wb') as code:
-        print(code)
         code.write(res.content)
-        code.close()
+
+
+# 校验目录，并创建目录
+def check_dictionary(base, path):
+    base_path = base + path
+    if os.path.exists(base_path) is False:
+        os.makedirs(base_path)
 
 
 # 是否是html
@@ -73,7 +116,17 @@ def is_html(url):
         return False
 
 
-# 判断是否和html地址 TODO: 地址过滤
+# css解析下级链接
+def is_css(url):
+    pattern = re.compile(r"(?:.+)\.css")
+    m = pattern.match(url)
+    if m:
+        return True
+    else:
+        return False
+
+
+# 判断地址是否有效 TODO: 地址过滤, 目前无扩展名的地址全部过滤掉了
 def is_validate_url(url):
     if url.startswith('javascript') or url.startswith('#') or url == '':
         return False
@@ -157,12 +210,12 @@ def dfs(url, save):
 # 全站页面扫描
 sites = set()
 visited = set()
-seed_url = 'http://www.jq22.com/demo/bootstrap-150308231052/list.html'
+seed_url = 'http://www.jq22.com/demo/bootstrap-150308231052/index.html'
 domain = 'www.jq22.com'
+
 start = time.clock()
-dfs(seed_url, False)
+dfs(seed_url, True)
 end = time.clock()
 print('total cost %f s' % (end - start))
 print('------------------------all-sites-map-------------------------')
 print(sites)
-
